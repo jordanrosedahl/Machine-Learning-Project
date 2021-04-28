@@ -1,0 +1,93 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Jordan Rosedahl"
+date: "4/27/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(caret)
+library(rpart)
+library(gbm)
+install.packages("openxlsx")
+library(openxlsx)
+```
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+We have used the training data to build a machine learning model that attempts to predict the method of the exercise in the testing data.
+
+First we read in the data and create training and test sets.
+
+
+```{r}
+training <- read.xlsx("~/consult/Coursera/pml-training.xlsx")
+testing <- read.xlsx("~/consult/Coursera/pml-testing.xlsx")
+
+set.seed(12345)
+inTrain = createDataPartition(training$classe, p = 0.6)[[1]]
+train = training[ inTrain,]
+test = training[-inTrain,]
+```
+
+The vast majority of the variables appeared as if they'd be unhelpful in building a prediction model: they were either missing, NA, or included irrelevant information.
+
+Therefore the data was subset to only those columns that appeared would be useful, plus the outcome "classe" variable. 
+
+Three distinct classification models were fit using PCA preprocessing since it is likely many of the variables are correlated. The models are below:
+``` {r, include=FALSE, echo=FALSE}
+train.sub <- train[,c(7:11,37:49,60:68,84:86,113:124,140,151:160)]
+```
+```{r, echo=TRUE, results='hide', warning=FALSE}
+## Random Forest Classification
+fit2 <- train(classe ~ .,method="rf",preProcess="pca",data=train.sub,verbose=FALSE)
+prediction2 <- predict(fit2,test)
+
+
+## Boosting with Trees Classification
+fit3 <- train(classe ~ .,method="gbm",preProcess="pca",data=train.sub,verbose=FALSE)
+prediction3 <- predict(fit3,test)
+
+
+## LDA Classification
+fit4 <- train(classe ~ .,method="lda",preProcess="pca",data=train.sub)
+prediction4 <- predict(fit4,test)
+```
+
+It's possible stacking models would result in better prediction, so we create a stacked model as well.
+
+
+```{r}
+## Stacking models
+
+predDF <- data.frame(prediction2,prediction3,prediction4,classe=test$classe)
+combModFit <- train(classe ~ .,method="rf",data=predDF)
+combPred <- predict(combModFit,predDF)
+```
+
+Let's assess the accuracy using confusionMatrix.
+
+
+``` {r}
+confusionMatrix(prediction2,as.factor(test$classe))$overall[1]
+confusionMatrix(prediction3,as.factor(test$classe))$overall[1]
+confusionMatrix(prediction4,as.factor(test$classe))$overall[1]
+confusionMatrix(combPred,as.factor(test$classe))$overall[1]
+
+## Fit2 (random forest) has over 97% accuracy on the test dataset!
+```
+
+
+It turns out that the stacked model isn't any better than the random forest model (i.e. "fit2"). Therefore we'll proceed with the random forest model to predict "classe" on the true testing data which does not include the outcome.
+
+
+``` {r}
+## Apply fit2 to actual testing data
+
+predict(fit2,testing)
+```
+
+Those are our predictions. Based on the results of the quiz, 19 out of 20 are correct; quite good and in line with what we'd expect!
